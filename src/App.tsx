@@ -1,7 +1,13 @@
 ﻿import { useMemo, useState, type FormEvent } from "react";
 import Header from "./components/Header";
 import Column from "./components/Column";
-import type { Task, Status } from "./types/Task";
+import type { Task, Status, Priority } from "./types/Task";
+
+const priorityOrder: Record<Priority, number> = {
+  High: 1,
+  Medium: 2,
+  Low: 3,
+};
 
 const initialTasks: Task[] = [
   {
@@ -9,24 +15,28 @@ const initialTasks: Task[] = [
     title: "Design wireframes",
     description: "Create the kanban dashboard layout.",
     status: "To Do",
+    priority: "High",
   },
   {
     id: "2",
     title: "Implement drag and drop",
     description: "Enable moving tasks between columns.",
     status: "In Progress",
+    priority: "Medium",
   },
   {
     id: "3",
     title: "Write review notes",
     description: "Collect feedback and finalize task details.",
     status: "In Review",
+    priority: "Low",
   },
   {
     id: "4",
     title: "Deploy application",
     description: "Publish the kanban board for users.",
     status: "Done",
+    priority: "Medium",
   },
 ];
 
@@ -38,11 +48,14 @@ function App() {
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newStatus, setNewStatus] = useState<Status>("To Do");
+  const [newPriority, setNewPriority] = useState<Priority>("Medium");
 
   const board = useMemo(
     () => columns.map((status) => ({
       status,
-      tasks: tasks.filter((task) => task.status === status),
+      tasks: tasks
+        .filter((task) => task.status === status)
+        .sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]),
     })),
     [tasks],
   );
@@ -59,6 +72,7 @@ function App() {
       title: newTitle.trim(),
       description: newDescription.trim(),
       status: newStatus,
+      priority: newPriority,
     };
 
     setTasks((current) => [newTask, ...current]);
@@ -154,6 +168,21 @@ function App() {
                   {columns.map((status) => (
                     <option key={status} value={status}>
                       {status}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">Priority</span>
+                <select
+                  value={newPriority}
+                  onChange={(event) => setNewPriority(event.target.value as Priority)}
+                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-slate-400"
+                >
+                  {(["High", "Medium", "Low"] as Priority[]).map((priority) => (
+                    <option key={priority} value={priority}>
+                      {priority}
                     </option>
                   ))}
                 </select>

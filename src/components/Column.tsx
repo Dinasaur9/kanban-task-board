@@ -26,6 +26,7 @@ function Column({ title, tasks, onStatusChange }: ColumnProps) {
               title={task.title}
               description={task.description}
               status={task.status}
+              priority={task.priority}
               onStatusChange={(status) => onStatusChange(task.id, status)}
             />
           ))
