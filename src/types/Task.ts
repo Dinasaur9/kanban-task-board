@@ -7,4 +7,6 @@ export interface Task {
   description: string;
   status: Status;
   priority: Priority;
+  user_id?: string;
+  created_at?: string;
 }
