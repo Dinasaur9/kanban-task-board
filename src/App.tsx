@@ -1,19 +1,50 @@
-﻿import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Header from "./components/Header";
 import Column from "./components/Column";
-import type { Task, Status, Priority } from "./types/Task";
-import { supabase, isSupabaseConfigured } from "./lib/supabaseClient";
+import type { Priority, Status, Task } from "./types/Task";
+import { isSupabaseConfigured, supabase } from "./lib/supabaseClient";
 
 const priorityOrder: Record<Priority, number> = {
-  High: 1,
-  Medium: 2,
-  Low: 3,
+  high: 1,
+  normal: 2,
+  low: 3,
 };
 
-const columns: Status[] = ["To Do", "In Progress", "In Review", "Done"];
+const columns: Status[] = ["todo", "in_progress", "in_review", "done"];
+const localGuestIdKey = "kanbanLocalGuestId";
+
+function getTaskStorageKey(id: string) {
+  return `kanbanTasks:${id}`;
+}
+
+function getOrCreateLocalGuestId() {
+  const savedId = localStorage.getItem(localGuestIdKey);
+  if (savedId) return savedId;
+
+  const id = crypto.randomUUID();
+  localStorage.setItem(localGuestIdKey, id);
+  return id;
+}
+
+function loadLocalTasks(id: string): Task[] {
+  const saved = localStorage.getItem(getTaskStorageKey(id));
+  if (!saved) return [];
+
+  try {
+    return JSON.parse(saved) as Task[];
+  } catch {
+    return [];
+  }
+}
+
+function isOverdue(task: Task) {
+  if (!task.due_date || task.status === "done") return false;
+  const endOfDueDate = new Date(`${task.due_date}T23:59:59`);
+  return endOfDueDate.getTime() < Date.now();
+}
 
 function App() {
-  const [guestLabel, setGuestLabel] = useState<string>("");
+  const [guestLabel, setGuestLabel] = useState("");
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [useLocalFallback, setUseLocalFallback] = useState(!isSupabaseConfigured);
@@ -22,94 +53,63 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const getTaskStorageKey = (id: string) => `kanbanTasks:${id}`;
-
-  const loadTasksForId = (id: string) => {
-    const saved = localStorage.getItem(getTaskStorageKey(id));
-    if (!saved) {
-      return [];
-    }
-
-    try {
-      return JSON.parse(saved) as Task[];
-    } catch {
-      setErrorMessage("Unable to load saved tasks from local storage.");
-      return [];
-    }
-  };
+  const [searchQuery, setSearchQuery] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState<Priority | "all">("all");
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
-  const [newStatus, setNewStatus] = useState<Status>("To Do");
-  const [newPriority, setNewPriority] = useState<Priority>("Medium");
+  const [newStatus, setNewStatus] = useState<Status>("todo");
+  const [newPriority, setNewPriority] = useState<Priority>("normal");
+  const [newDueDate, setNewDueDate] = useState("");
   const [editingTask, setEditingTask] = useState<Task | null>(null);
-
-  const initializeLocalGuest = () => {
-    let localGuestId = localStorage.getItem("kanbanLocalGuestId");
-    if (!localGuestId) {
-      localGuestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-      localStorage.setItem("kanbanLocalGuestId", localGuestId);
-    }
-
-    setGuestLabel(`Guest ${localGuestId.slice(0, 6)}`);
-    setUserId(localGuestId);
-    setUseLocalFallback(true);
-    setIsAuthReady(true);
-  };
 
   useEffect(() => {
     let mounted = true;
 
-    const initializeSupabase = async () => {
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (!mounted) {
-        return;
-      }
-
-      let user = sessionData?.session?.user ?? null;
-      if (!user) {
-        const { data, error: anonymousError } = await supabase.auth.signInAnonymously();
-        if (!mounted) {
-          return;
-        }
-
-        if (anonymousError || !data?.user) {
-          console.warn("Supabase anonymous auth failed, falling back to local guest.", anonymousError?.message);
-          initializeLocalGuest();
-          return;
-        }
-
-        user = data.user;
-      }
-
-      if (user) {
-        setUserId(user.id);
-        setGuestLabel(`Guest ${user.id.slice(0, 6)}`);
-        setUseLocalFallback(false);
-      }
+    const initializeLocalGuest = () => {
+      const id = getOrCreateLocalGuestId();
+      if (!mounted) return;
+      setGuestLabel(`Guest ${id.slice(0, 6)}`);
+      setUserId(id);
+      setUseLocalFallback(true);
       setIsAuthReady(true);
     };
 
-    if (!isSupabaseConfigured) {
-      initializeLocalGuest();
-    } else {
-      initializeSupabase();
-    }
-
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!mounted) {
+    const initializeAuth = async () => {
+      if (!isSupabaseConfigured) {
+        initializeLocalGuest();
         return;
       }
 
-      const user = session?.user ?? null;
-      if (user) {
-        setUserId(user.id);
-        setGuestLabel(`Guest ${user.id.slice(0, 6)}`);
-        setUseLocalFallback(false);
-        setIsAuthReady(true);
-      } else if (!useLocalFallback) {
-        initializeLocalGuest();
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (!mounted) return;
+
+      let user = sessionData.session?.user ?? null;
+      if (!user && !sessionError) {
+        const { data, error } = await supabase.auth.signInAnonymously();
+        if (!mounted) return;
+        if (!error) user = data.user;
       }
+
+      if (!user) {
+        setErrorMessage("Cloud sync is unavailable. Tasks are saved safely on this device.");
+        initializeLocalGuest();
+        return;
+      }
+
+      setUserId(user.id);
+      setGuestLabel(`Guest ${user.id.slice(0, 6)}`);
+      setUseLocalFallback(false);
+      setIsAuthReady(true);
+    };
+
+    void initializeAuth();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted || !session?.user) return;
+      setUserId(session.user.id);
+      setGuestLabel(`Guest ${session.user.id.slice(0, 6)}`);
+      setUseLocalFallback(false);
+      setIsAuthReady(true);
     });
 
     return () => {
@@ -118,84 +118,112 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+
+    const loadTasks = async () => {
+      if (useLocalFallback) {
+        const localTasks = loadLocalTasks(userId);
+        if (!cancelled) {
+          setTasks(localTasks);
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      setIsLoading(true);
+      setErrorMessage(null);
+      const { data, error } = await supabase
+        .from("tasks")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false });
+
+      if (cancelled) return;
+      if (error) {
+        setErrorMessage("Unable to load your board. Refresh to try again.");
+        setTasks([]);
+      } else {
+        setTasks((data ?? []) as Task[]);
+      }
+      setIsLoading(false);
+    };
+
+    void loadTasks();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, useLocalFallback]);
+
+  useEffect(() => {
+    if (userId && useLocalFallback && !isLoading) {
+      localStorage.setItem(getTaskStorageKey(userId), JSON.stringify(tasks));
+    }
+  }, [tasks, userId, useLocalFallback, isLoading]);
+
+  const filteredTasks = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return tasks.filter((task) => {
+      const matchesSearch =
+        !query ||
+        task.title.toLowerCase().includes(query) ||
+        task.description.toLowerCase().includes(query);
+      const matchesPriority = priorityFilter === "all" || task.priority === priorityFilter;
+      return matchesSearch && matchesPriority;
+    });
+  }, [priorityFilter, searchQuery, tasks]);
+
   const board = useMemo(
     () =>
       columns.map((status) => ({
         status,
-        tasks: tasks
+        tasks: filteredTasks
           .filter((task) => task.status === status)
           .sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]),
       })),
-    [tasks],
+    [filteredTasks],
   );
 
-  const fetchRemoteTasks = async (userId: string) => {
-    setErrorMessage(null);
-    setIsLoading(true);
-
-    const { data, error } = await supabase
-      .from("tasks")
-      .select("*")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.warn("Failed to load tasks from Supabase.", error.message);
-      setErrorMessage("Unable to load tasks from Supabase. Refresh to retry.");
-      setTasks([]);
-    } else {
-      setTasks(data ?? []);
-    }
-
-    setIsLoading(false);
+  const resetForm = () => {
+    setEditingTask(null);
+    setNewTitle("");
+    setNewDescription("");
+    setNewStatus("todo");
+    setNewPriority("normal");
+    setNewDueDate("");
   };
 
-  useEffect(() => {
-    if (!userId) {
-      return;
-    }
+  const openCreateModal = () => {
+    resetForm();
+    setIsModalOpen(true);
+  };
 
-    if (useLocalFallback) {
-      setErrorMessage(null);
-      setTasks(loadTasksForId(userId));
-      setIsLoading(false);
-      return;
-    }
+  const closeModal = () => {
+    resetForm();
+    setIsModalOpen(false);
+  };
 
-    fetchRemoteTasks(userId);
-  }, [userId, useLocalFallback]);
-
-  useEffect(() => {
-    if (!userId || !useLocalFallback) {
-      return;
-    }
-
-    localStorage.setItem(getTaskStorageKey(userId), JSON.stringify(tasks));
-  }, [tasks, userId, useLocalFallback]);
-
-
-  async function handleAddTask(event: FormEvent<HTMLFormElement>) {
+  async function handleSaveTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    if (!newTitle.trim() || !newDescription.trim() || !userId) {
-      return;
-    }
+    if (!newTitle.trim() || !userId) return;
 
     setIsSaving(true);
     setErrorMessage(null);
 
     if (editingTask) {
+      const previousTask = editingTask;
       const updatedTask: Task = {
         ...editingTask,
         title: newTitle.trim(),
         description: newDescription.trim(),
         status: newStatus,
         priority: newPriority,
+        due_date: newDueDate || null,
       };
-
       setTasks((current) => current.map((task) => (task.id === updatedTask.id ? updatedTask : task)));
 
-      if (!useLocalFallback && isSupabaseConfigured) {
+      if (!useLocalFallback) {
         const { error } = await supabase
           .from("tasks")
           .update({
@@ -203,47 +231,45 @@ function App() {
             description: updatedTask.description,
             status: updatedTask.status,
             priority: updatedTask.priority,
+            due_date: updatedTask.due_date,
           })
           .eq("id", updatedTask.id)
           .eq("user_id", userId);
+
         if (error) {
-          console.warn("Failed to update task in Supabase.", error.message);
-          setErrorMessage("Unable to save edits. Try again.");
+          setTasks((current) => current.map((task) => (task.id === previousTask.id ? previousTask : task)));
+          setErrorMessage("Unable to save those changes. Please try again.");
+          setIsSaving(false);
+          return;
         }
       }
-
-      setEditingTask(null);
     } else {
-      const row = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      const newTask: Task = {
+        id: crypto.randomUUID(),
         title: newTitle.trim(),
         description: newDescription.trim(),
         status: newStatus,
         priority: newPriority,
+        due_date: newDueDate || null,
         user_id: userId,
         created_at: new Date().toISOString(),
       };
 
-      if (!useLocalFallback && isSupabaseConfigured) {
-        const { data, error } = await supabase.from("tasks").insert([row]).select().single();
+      if (!useLocalFallback) {
+        const { data, error } = await supabase.from("tasks").insert(newTask).select().single();
         if (error) {
-          console.warn("Failed to add task to Supabase.", error.message);
-          setErrorMessage("Unable to create task. Try again.");
-          setTasks((current) => [row, ...current]);
-        } else {
-          setTasks((current) => [data ?? row, ...current]);
+          setErrorMessage("Unable to create the task. Please try again.");
+          setIsSaving(false);
+          return;
         }
+        setTasks((current) => [data as Task, ...current]);
       } else {
-        setTasks((current) => [row, ...current]);
+        setTasks((current) => [newTask, ...current]);
       }
     }
 
-    setNewTitle("");
-    setNewDescription("");
-    setNewStatus("To Do");
-    setNewPriority("Medium");
-    setIsModalOpen(false);
     setIsSaving(false);
+    closeModal();
   }
 
   function handleEditTask(task: Task) {
@@ -252,226 +278,224 @@ function App() {
     setNewDescription(task.description);
     setNewStatus(task.status);
     setNewPriority(task.priority);
+    setNewDueDate(task.due_date ?? "");
     setIsModalOpen(true);
   }
 
   async function handleDeleteTask(taskId: string) {
-    setIsSaving(true);
-    setErrorMessage(null);
+    const previousTasks = tasks;
     setTasks((current) => current.filter((task) => task.id !== taskId));
+    setErrorMessage(null);
 
-    if (!useLocalFallback && isSupabaseConfigured && userId) {
+    if (!useLocalFallback && userId) {
       const { error } = await supabase.from("tasks").delete().eq("id", taskId).eq("user_id", userId);
       if (error) {
-        console.warn("Failed to delete task from Supabase.", error.message);
-        setErrorMessage("Unable to delete task. Refresh to retry.");
+        setTasks(previousTasks);
+        setErrorMessage("Unable to delete the task. Please try again.");
       }
     }
-
-    setIsSaving(false);
   }
 
   async function handleStatusChange(taskId: string, status: Status) {
-    setIsSaving(true);
+    const previousTasks = tasks;
+    setTasks((current) => current.map((task) => (task.id === taskId ? { ...task, status } : task)));
     setErrorMessage(null);
 
-    setTasks((current) =>
-      current.map((task) =>
-        task.id === taskId
-          ? {
-              ...task,
-              status,
-            }
-          : task,
-      ),
-    );
-
-    if (!useLocalFallback && isSupabaseConfigured) {
-      const { error } = await supabase.from("tasks").update({ status }).eq("id", taskId).eq("user_id", userId);
+    if (!useLocalFallback && userId) {
+      const { error } = await supabase
+        .from("tasks")
+        .update({ status })
+        .eq("id", taskId)
+        .eq("user_id", userId);
       if (error) {
-        console.warn("Failed to update task status in Supabase.", error.message);
-        setErrorMessage("Unable to move the task. Refresh to retry.");
+        setTasks(previousTasks);
+        setErrorMessage("Unable to move the task. Please try again.");
       }
     }
-
-    setIsSaving(false);
-  }
-
-  function handleMoveTask(taskId: string, status: Status) {
-    handleStatusChange(taskId, status);
   }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
-      <Header
-        guestLabel={guestLabel}
-        onNewTask={() => {
-          setEditingTask(null);
-          setNewTitle("");
-          setNewDescription("");
-          setNewStatus("To Do");
-          setNewPriority("Medium");
-          setIsModalOpen(true);
-        }}
-      />
+      <Header guestLabel={guestLabel} onNewTask={openCreateModal} />
 
-      <main className="mx-auto max-w-8xl px-6 py-8 lg:px-10 lg:py-10">
-        <div className="mb-8 overflow-hidden rounded-[2rem] border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 px-8 py-10 shadow-2xl shadow-cyan-500/10">
+      <main className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+        <section className="mb-8 overflow-hidden rounded-[2rem] border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 px-5 py-7 shadow-2xl shadow-cyan-500/10 sm:px-8 sm:py-10">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
             <div className="max-w-3xl">
-              <h2 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">Kanban task board</h2>
-              <p className="mt-4 text-slate-300 sm:text-lg">
-                Track work across every stage with a polished board. Add tasks, move them between columns, and manage your workflow easily.
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300">Your workspace</p>
+              <h2 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">Turn plans into progress.</h2>
+              <p className="mt-4 max-w-2xl text-slate-300 sm:text-lg">
+                Capture the next step, set its priority, and move work forward with a board that stays focused.
               </p>
             </div>
-            <div className="inline-flex items-center gap-3 rounded-3xl border border-cyan-500/20 bg-slate-950/70 px-5 py-4 text-sm text-cyan-100 shadow-lg shadow-cyan-500/5 backdrop-blur-sm">
-              <span className="inline-flex h-3.5 w-3.5 rounded-full bg-cyan-400" />
+            <div className="inline-flex max-w-md items-center gap-3 rounded-3xl border border-cyan-500/20 bg-slate-950/70 px-5 py-4 text-sm text-cyan-100 shadow-lg shadow-cyan-500/5 backdrop-blur-sm">
+              <span className="inline-flex h-3 w-3 shrink-0 rounded-full bg-cyan-400 shadow-[0_0_16px_rgba(34,211,238,0.8)]" />
               {guestLabel
-                ? `Signed in as ${guestLabel}. Your board state is saved per anonymous user in this browser.`
+                ? `${guestLabel} workspace · ${useLocalFallback ? "saved on this device" : "securely synced"}`
                 : isAuthReady
-                ? "Anonymous guest session is ready. Refresh the page to keep your board."
-                : "Starting anonymous guest session..."}
+                  ? "Your guest workspace is ready"
+                  : "Preparing your private guest workspace…"}
             </div>
           </div>
 
-          <div className="mt-8 grid gap-4 sm:grid-cols-3">
-            <div className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5 text-white shadow-lg shadow-slate-950/10">
-              <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Total tasks</p>
-              <p className="mt-3 text-3xl font-semibold text-white">{tasks.length}</p>
-            </div>
-            <div className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5 text-white shadow-lg shadow-slate-950/10">
-              <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Completed</p>
-              <p className="mt-3 text-3xl font-semibold text-cyan-300">{tasks.filter((task) => task.status === "Done").length}</p>
-            </div>
-            <div className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5 text-white shadow-lg shadow-slate-950/10">
-              <p className="text-sm uppercase tracking-[0.24em] text-slate-400">In progress</p>
-              <p className="mt-3 text-3xl font-semibold text-amber-300">{tasks.filter((task) => task.status === "In Progress").length}</p>
-            </div>
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard label="Total tasks" value={tasks.length} accent="text-white" />
+            <StatCard label="Completed" value={tasks.filter((task) => task.status === "done").length} accent="text-cyan-300" />
+            <StatCard label="In progress" value={tasks.filter((task) => task.status === "in_progress").length} accent="text-amber-300" />
+            <StatCard label="Overdue" value={tasks.filter(isOverdue).length} accent="text-rose-300" />
           </div>
-        </div>
+        </section>
+
+        <section aria-label="Board controls" className="mb-6 flex flex-col gap-3 rounded-3xl border border-slate-800 bg-slate-900/70 p-4 sm:flex-row">
+          <label className="relative flex-1">
+            <span className="sr-only">Search tasks</span>
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search tasks…"
+              className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20"
+            />
+          </label>
+          <label>
+            <span className="sr-only">Filter by priority</span>
+            <select
+              value={priorityFilter}
+              onChange={(event) => setPriorityFilter(event.target.value as Priority | "all")}
+              className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 sm:w-52"
+            >
+              <option value="all">All priorities</option>
+              <option value="high">High priority</option>
+              <option value="normal">Normal priority</option>
+              <option value="low">Low priority</option>
+            </select>
+          </label>
+        </section>
 
         {errorMessage ? (
-          <div className="mb-6 rounded-3xl border border-red-500/20 bg-red-500/10 p-5 text-sm text-red-100 shadow-inner shadow-red-500/10">
+          <div role="alert" className="mb-6 rounded-3xl border border-red-500/20 bg-red-500/10 p-5 text-sm text-red-100">
             {errorMessage}
           </div>
         ) : null}
 
         {isLoading ? (
-          <div className="rounded-[2rem] border border-slate-800 bg-slate-900/90 p-10 text-center text-slate-300 shadow-2xl shadow-slate-950/10">
-            Loading tasks…
+          <div aria-live="polite" className="rounded-[2rem] border border-slate-800 bg-slate-900/90 p-10 text-center text-slate-300">
+            Loading your workspace…
           </div>
         ) : (
-          <div className="grid gap-6 xl:grid-cols-4 lg:grid-cols-2">
-            {board.map(({ status, tasks }) => (
+          <div className="grid gap-6 lg:grid-cols-2 2xl:grid-cols-4">
+            {board.map(({ status, tasks: columnTasks }) => (
               <Column
                 key={status}
-                title={status}
-                tasks={tasks}
-                onStatusChange={handleStatusChange}
-                onMoveTask={handleMoveTask}
+                status={status}
+                tasks={columnTasks}
+                onMoveTask={handleStatusChange}
                 onEditTask={handleEditTask}
                 onDeleteTask={handleDeleteTask}
+                onAddTask={openCreateModal}
               />
             ))}
           </div>
         )}
       </main>
 
-      {isModalOpen && (
-        <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/90 px-4 py-8 backdrop-blur-sm">
-          <div className="w-full max-w-lg overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-900 p-8 shadow-2xl shadow-slate-950/60">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {isModalOpen ? (
+        <div className="fixed inset-0 z-30 flex items-center justify-center overflow-y-auto bg-slate-950/90 px-4 py-8 backdrop-blur-sm" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) closeModal();
+        }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="task-dialog-title" className="w-full max-w-lg rounded-[2rem] border border-slate-800 bg-slate-900 p-6 shadow-2xl shadow-slate-950/60 sm:p-8">
+            <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-2xl font-semibold text-white">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300">{editingTask ? "Update work" : "Plan work"}</p>
+                <h3 id="task-dialog-title" className="mt-2 text-2xl font-semibold text-white">
                   {editingTask ? "Edit task" : "Create a new task"}
                 </h3>
-                <p className="mt-2 text-sm text-slate-400">Add details and choose the initial status.</p>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsModalOpen(false)}
-                className="rounded-full border border-slate-700 bg-slate-950/80 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-cyan-500/30 hover:bg-slate-900"
-              >
+              <button type="button" onClick={closeModal} aria-label="Close task dialog" className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800">
                 Close
               </button>
             </div>
 
-            <form className="mt-8 space-y-6" onSubmit={handleAddTask}>
-              <label className="block">
-                <span className="text-sm font-medium text-slate-700">Title</span>
+            <form className="mt-7 space-y-5" onSubmit={handleSaveTask}>
+              <FieldLabel label="Title" required>
                 <input
+                  autoFocus
+                  required
+                  maxLength={120}
                   value={newTitle}
                   onChange={(event) => setNewTitle(event.target.value)}
-                  className="mt-2 w-full rounded-3xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20"
+                  className="form-control"
                   placeholder="Example: Write feature spec"
                 />
-              </label>
+              </FieldLabel>
 
-              <label className="block">
-                <span className="text-sm font-medium text-slate-300">Description</span>
+              <FieldLabel label="Description">
                 <textarea
+                  maxLength={1000}
                   value={newDescription}
                   onChange={(event) => setNewDescription(event.target.value)}
-                  className="mt-2 w-full rounded-3xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20"
+                  className="form-control"
                   rows={4}
-                  placeholder="Describe the task..."
+                  placeholder="Add context, acceptance criteria, or a helpful note…"
                 />
-              </label>
+              </FieldLabel>
 
-              <label className="block">
-                <span className="text-sm font-medium text-slate-700">Status</span>
-                <select
-                  value={newStatus}
-                  onChange={(event) => setNewStatus(event.target.value as Status)}
-                  className="mt-2 w-full rounded-3xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20"
-                >
-                  {columns.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="grid gap-5 sm:grid-cols-2">
+                <FieldLabel label="Due date">
+                  <input type="date" value={newDueDate} onChange={(event) => setNewDueDate(event.target.value)} className="form-control" />
+                </FieldLabel>
+                <FieldLabel label="Priority">
+                  <select value={newPriority} onChange={(event) => setNewPriority(event.target.value as Priority)} className="form-control">
+                    <option value="high">High</option>
+                    <option value="normal">Normal</option>
+                    <option value="low">Low</option>
+                  </select>
+                </FieldLabel>
+              </div>
 
-              <label className="block">
-                <span className="text-sm font-medium text-slate-300">Priority</span>
-                <select
-                  value={newPriority}
-                  onChange={(event) => setNewPriority(event.target.value as Priority)}
-                  className="mt-2 w-full rounded-3xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20"
-                >
-                  {(["High", "Medium", "Low"] as Priority[]).map((priority) => (
-                    <option key={priority} value={priority}>
-                      {priority}
-                    </option>
-                  ))}
+              <FieldLabel label="Status">
+                <select value={newStatus} onChange={(event) => setNewStatus(event.target.value as Status)} className="form-control">
+                  <option value="todo">To Do</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="in_review">In Review</option>
+                  <option value="done">Done</option>
                 </select>
-              </label>
+              </FieldLabel>
 
               <div className="flex flex-wrap gap-3 pt-2">
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className={`rounded-full px-5 py-3 text-sm font-semibold text-slate-950 transition ${isSaving ? "bg-slate-600 cursor-not-allowed" : "bg-cyan-500 hover:bg-cyan-400"}`}
-                >
-                  {isSaving ? "Saving..." : editingTask ? "Save task" : "Add task"}
+                <button type="submit" disabled={isSaving} className="rounded-full bg-cyan-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:bg-slate-600">
+                  {isSaving ? "Saving…" : editingTask ? "Save task" : "Add task"}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingTask(null);
-                    setIsModalOpen(false);
-                  }}
-                  className="rounded-full border border-slate-700 bg-slate-950/80 px-5 py-3 text-sm font-semibold text-slate-200 transition hover:bg-slate-900"
-                >
+                <button type="button" onClick={closeModal} className="rounded-full border border-slate-700 px-5 py-3 text-sm font-semibold text-slate-200 hover:bg-slate-800">
                   Cancel
                 </button>
               </div>
             </form>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
+  );
+}
+
+function StatCard({ label, value, accent }: { label: string; value: number; accent: string }) {
+  return (
+    <div className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5 shadow-lg shadow-slate-950/10">
+      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">{label}</p>
+      <p className={`mt-3 text-3xl font-semibold ${accent}`}>{value}</p>
+    </div>
+  );
+}
+
+function FieldLabel({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="text-sm font-medium text-slate-300">
+        {label}
+        {required ? <span className="ml-1 text-cyan-300">*</span> : null}
+      </span>
+      {children}
+    </label>
   );
 }
 

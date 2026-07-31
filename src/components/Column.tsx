@@ -1,57 +1,71 @@
-﻿import TaskCard from "./TaskCard";
-import type { Task, Status } from "../types/Task";
+import TaskCard from "./TaskCard";
+import type { Status, Task } from "../types/Task";
+
+const columnDetails: Record<Status, { title: string; dot: string; empty: string }> = {
+  todo: { title: "To Do", dot: "bg-slate-400", empty: "Start by adding the next piece of work." },
+  in_progress: { title: "In Progress", dot: "bg-amber-400", empty: "Drag a task here when work begins." },
+  in_review: { title: "In Review", dot: "bg-violet-400", empty: "Tasks waiting for feedback appear here." },
+  done: { title: "Done", dot: "bg-cyan-400", empty: "Completed work will collect here." },
+};
 
 type ColumnProps = {
-  title: string;
+  status: Status;
   tasks: Task[];
-  onStatusChange: (taskId: string, status: Status) => void;
   onMoveTask: (taskId: string, status: Status) => void;
   onEditTask: (task: Task) => void;
   onDeleteTask: (taskId: string) => void;
+  onAddTask: () => void;
 };
 
-function Column({ title, tasks, onStatusChange, onMoveTask, onEditTask, onDeleteTask }: ColumnProps) {
+function Column({ status, tasks, onMoveTask, onEditTask, onDeleteTask, onAddTask }: ColumnProps) {
+  const details = columnDetails[status];
+
   return (
-    <div
-      className="rounded-[2rem] border border-slate-800 bg-slate-900/90 p-5 shadow-2xl shadow-slate-950/20 backdrop-blur-sm min-h-[650px]"
-      onDragOver={(event) => event.preventDefault()}
+    <section
+      aria-labelledby={`column-${status}`}
+      className="min-h-[420px] rounded-[2rem] border border-slate-800 bg-slate-900/80 p-4 shadow-2xl shadow-slate-950/20 sm:p-5"
+      onDragOver={(event) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+      }}
       onDrop={(event) => {
         event.preventDefault();
         const taskId = event.dataTransfer.getData("text/plain");
-
-        if (taskId) {
-          onMoveTask(taskId, title as Status);
-        }
+        if (taskId) void onMoveTask(taskId, status);
       }}
     >
-      <div className="flex items-center justify-between mb-5">
-        <h2 className="text-lg font-semibold text-white">{title}</h2>
-
-        <span className="rounded-full bg-slate-800 px-3 py-1.5 text-sm font-semibold text-slate-300">
-          {tasks.length}
-        </span>
+      <div className="mb-5 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className={`h-2.5 w-2.5 rounded-full ${details.dot}`} />
+          <h2 id={`column-${status}`} className="font-semibold text-white">{details.title}</h2>
+        </div>
+        <span className="rounded-full bg-slate-800 px-3 py-1 text-sm font-semibold text-slate-300">{tasks.length}</span>
       </div>
 
       <div className="space-y-4">
-        {tasks.length > 0 ? (
+        {tasks.length ? (
           tasks.map((task) => (
             <TaskCard
               key={task.id}
-              taskId={task.id}
-              title={task.title}
-              description={task.description}
-              status={task.status}
-              priority={task.priority}
-              onStatusChange={(status) => onStatusChange(task.id, status)}
+              task={task}
+              onStatusChange={(nextStatus) => void onMoveTask(task.id, nextStatus)}
               onEdit={() => onEditTask(task)}
-              onDelete={() => onDeleteTask(task.id)}
+              onDelete={() => void onDeleteTask(task.id)}
             />
           ))
         ) : (
-          <p className="text-sm text-gray-500">No tasks in this column.</p>
+          <button
+            type="button"
+            onClick={onAddTask}
+            className="flex min-h-36 w-full flex-col items-center justify-center rounded-3xl border border-dashed border-slate-700 px-6 text-center transition hover:border-cyan-500/40 hover:bg-slate-950/40"
+          >
+            <span className="text-2xl text-slate-500">+</span>
+            <span className="mt-2 text-sm font-medium text-slate-300">No tasks yet</span>
+            <span className="mt-1 text-xs leading-5 text-slate-500">{details.empty}</span>
+          </button>
         )}
       </div>
-    </div>
+    </section>
   );
 }
 

@@ -1,5 +1,5 @@
-﻿export type Status = "To Do" | "In Progress" | "In Review" | "Done";
-export type Priority = "High" | "Medium" | "Low";
+export type Status = "todo" | "in_progress" | "in_review" | "done";
+export type Priority = "high" | "normal" | "low";
 
 export interface Task {
   id: string;
@@ -7,6 +7,7 @@ export interface Task {
   description: string;
   status: Status;
   priority: Priority;
-  user_id?: string;
-  created_at?: string;
+  user_id: string;
+  created_at: string;
+  due_date: string | null;
 }

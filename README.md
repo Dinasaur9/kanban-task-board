@@ -1,75 +1,82 @@
-# React + TypeScript + Vite
+# NextPlay Kanban
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A polished, responsive Kanban task board built for the Next Play Games Software Development Internship Assessment.
 
-Currently, two official plugins are available:
+## Live demo
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+The deployment URL will be added here after publishing.
 
-## React Compiler
+## Features
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Private guest workspaces using Supabase anonymous authentication
+- Four required workflow columns: To Do, In Progress, In Review, and Done
+- Drag-and-drop task movement with an accessible status-selector alternative
+- Create, edit, move, and delete task workflows
+- Priority levels, descriptions, and due dates
+- Due-soon and overdue indicators
+- Search and priority filtering
+- Board summary statistics
+- Responsive layouts, polished empty states, loading feedback, and actionable errors
+- Safe device-local fallback when Supabase is unavailable
+- End-to-end coverage with Playwright
 
-## Expanding the ESLint configuration
+## Technology
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- React 19 and TypeScript
+- Vite
+- Tailwind CSS
+- Supabase Auth and Postgres
+- Playwright
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Local setup
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+1. Clone the repository.
+2. Install dependencies:
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+   ```bash
+   npm install
+   ```
 
+3. Create a Supabase project on the free tier.
+4. In Supabase Authentication settings, enable anonymous sign-ins.
+5. Run [`supabase/schema.sql`](supabase/schema.sql) in the Supabase SQL Editor.
+6. Copy `.env.example` to `.env.local` and add the project URL and public anon key:
+
+   ```env
+   VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+   VITE_SUPABASE_ANON_KEY=your-public-anon-key
+   ```
+
+7. Start the app:
+
+   ```bash
+   npm run dev
+   ```
+
+Never place a Supabase service-role key in a frontend environment file.
+
+## Database and security
+
+The complete reproducible schema is in [`supabase/schema.sql`](supabase/schema.sql). Tasks use UUID primary keys and canonical status values (`todo`, `in_progress`, `in_review`, and `done`). Each record is tied to the authenticated guest through `user_id`.
+
+Row Level Security is enabled and forced. Separate `SELECT`, `INSERT`, `UPDATE`, and `DELETE` policies compare `auth.uid()` with `user_id`, so one guest cannot access another guest's tasks. The anonymous Postgres role receives no table access; signed-in anonymous Supabase users operate through the `authenticated` role.
+
+## Quality checks
+
+```bash
+npm run lint
+npm run build
+npm run test:e2e
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Design decisions
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+The visual system uses a deep slate foundation with cyan as the primary action color and restrained amber, violet, emerald, and red accents for workflow meaning. Strong spacing, rounded surfaces, compact badges, and clear typography create hierarchy without turning the board into a dense dashboard.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Native HTML drag-and-drop keeps the required desktop interaction lightweight. Every card also includes a status selector so moving tasks remains keyboard- and touch-friendly. Optimistic updates make the board feel immediate, while failed remote mutations roll back to the previous state and display a clear message.
 
-```
+## Tradeoffs and future improvements
+
+- Native drag-and-drop is intentionally dependency-free, but a dedicated interaction library could add richer touch dragging and animated reordering within columns.
+- Device-local storage is a resilience fallback, not a replacement for Supabase. Local fallback data does not automatically merge into a later cloud session.
+- With more time, the next additions would be assignees, task comments, activity history, and custom labels.
