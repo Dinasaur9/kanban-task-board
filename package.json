@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node scripts/build-sites-worker.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "test:e2e": "playwright test -c e2e/playwright.config.ts"
