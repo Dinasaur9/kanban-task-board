@@ -4,7 +4,7 @@ A polished, responsive Kanban task board built for the Next Play Games Software 
 
 ## Live demo
 
-The deployment URL will be added here after publishing.
+[Open the live NextPlay Kanban app](https://nextplay-kanban-dina.ranana.chatgpt.site)
 
 ## Features
 

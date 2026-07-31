@@ -18,6 +18,7 @@ test-results
 playwright-report
 output
 site-build.tar.gz
+tmp
 
 # Editor directories and files
 .vscode/*
