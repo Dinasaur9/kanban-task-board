@@ -23,7 +23,7 @@ function Column({ status, tasks, onMoveTask, onEditTask, onDeleteTask, onAddTask
   return (
     <section
       aria-labelledby={`column-${status}`}
-      className="min-h-[420px] rounded-[2rem] border border-slate-800 bg-slate-900/80 p-4 shadow-2xl shadow-slate-950/20 sm:p-5"
+      className={`board-column column-${status} min-h-[440px] rounded-[1.75rem] p-4 sm:p-5`}
       onDragOver={(event) => {
         event.preventDefault();
         event.dataTransfer.dropEffect = "move";
@@ -34,7 +34,7 @@ function Column({ status, tasks, onMoveTask, onEditTask, onDeleteTask, onAddTask
         if (taskId) void onMoveTask(taskId, status);
       }}
     >
-      <div className="mb-5 flex items-center justify-between">
+      <div className="mb-5 flex items-center justify-between border-b border-white/5 pb-4">
         <div className="flex items-center gap-3">
           <span className={`h-2.5 w-2.5 rounded-full ${details.dot}`} />
           <h2 id={`column-${status}`} className="font-semibold text-white">{details.title}</h2>

@@ -54,7 +54,7 @@ function TaskCard({ task, onStatusChange, onEdit, onDelete }: TaskCardProps) {
         event.dataTransfer.setData("text/plain", task.id);
         event.dataTransfer.effectAllowed = "move";
       }}
-      className="group cursor-grab rounded-3xl border border-slate-800 bg-slate-950/95 p-5 shadow-xl shadow-slate-950/20 transition duration-200 hover:-translate-y-0.5 hover:border-cyan-500/40 hover:shadow-cyan-500/10 active:cursor-grabbing"
+      className="task-card group cursor-grab rounded-[1.35rem] p-4 transition duration-200 hover:-translate-y-1 active:cursor-grabbing"
     >
       <div className="flex flex-wrap items-center gap-2">
         <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${priorityStyles[task.priority]}`}>
@@ -67,7 +67,7 @@ function TaskCard({ task, onStatusChange, onEdit, onDelete }: TaskCardProps) {
         ) : null}
       </div>
 
-      <h3 className="mt-4 line-clamp-2 font-semibold leading-6 text-white">{task.title}</h3>
+      <h3 className="mt-4 line-clamp-2 font-semibold leading-6 tracking-[-0.01em] text-white">{task.title}</h3>
       {task.description ? <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-400">{task.description}</p> : null}
 
       <div className="mt-5 border-t border-slate-800 pt-4">

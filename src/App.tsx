@@ -184,6 +184,8 @@ function App() {
       })),
     [filteredTasks],
   );
+  const completedCount = tasks.filter((task) => task.status === "done").length;
+  const completionPercent = tasks.length ? Math.round((completedCount / tasks.length) * 100) : 0;
 
   const resetForm = () => {
     setEditingTask(null);
@@ -315,38 +317,53 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
+    <div className="app-shell min-h-screen text-slate-100">
       <Header guestLabel={guestLabel} onNewTask={openCreateModal} />
 
-      <main className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
-        <section className="mb-8 overflow-hidden rounded-[2rem] border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 px-5 py-7 shadow-2xl shadow-cyan-500/10 sm:px-8 sm:py-10">
+      <main className="relative z-10 mx-auto max-w-[1680px] px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+        <section className="hero-panel relative mb-8 overflow-hidden rounded-[2rem] px-5 py-7 sm:px-8 sm:py-9">
+          <div className="hero-grid absolute inset-0 opacity-40" />
+          <div className="absolute -right-24 -top-32 h-80 w-80 rounded-full bg-cyan-400/10 blur-3xl" />
+          <div className="absolute -bottom-40 left-1/3 h-80 w-80 rounded-full bg-violet-500/10 blur-3xl" />
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-            <div className="max-w-3xl">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300">Your workspace</p>
-              <h2 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">Turn plans into progress.</h2>
+            <div className="relative max-w-3xl">
+              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/8 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-200">
+                <span className="h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_12px_#67e8f9]" />
+                Your workspace
+              </div>
+              <h2 className="max-w-2xl text-4xl font-semibold tracking-[-0.04em] text-white sm:text-5xl lg:text-[3.6rem] lg:leading-[1.02]">
+                Turn plans into <span className="text-gradient">progress.</span>
+              </h2>
               <p className="mt-4 max-w-2xl text-slate-300 sm:text-lg">
                 Capture the next step, set its priority, and move work forward with a board that stays focused.
               </p>
             </div>
-            <div className="inline-flex max-w-md items-center gap-3 rounded-3xl border border-cyan-500/20 bg-slate-950/70 px-5 py-4 text-sm text-cyan-100 shadow-lg shadow-cyan-500/5 backdrop-blur-sm">
-              <span className="inline-flex h-3 w-3 shrink-0 rounded-full bg-cyan-400 shadow-[0_0_16px_rgba(34,211,238,0.8)]" />
-              {guestLabel
-                ? `${guestLabel} workspace · ${useLocalFallback ? "saved on this device" : "securely synced"}`
-                : isAuthReady
-                  ? "Your guest workspace is ready"
-                  : "Preparing your private guest workspace…"}
+            <div className="relative flex items-center gap-5 rounded-[1.75rem] border border-white/10 bg-slate-950/55 p-5 shadow-2xl backdrop-blur-xl">
+              <div className="progress-ring grid h-20 w-20 shrink-0 place-items-center rounded-full" style={{ "--progress": `${completionPercent * 3.6}deg` } as React.CSSProperties}>
+                <div className="grid h-14 w-14 place-items-center rounded-full bg-slate-950 text-sm font-bold text-white">{completionPercent}%</div>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Board health</p>
+                <p className="mt-1 font-semibold text-white">{completedCount} of {tasks.length} completed</p>
+                <div className="mt-3 flex items-center gap-2 text-xs text-cyan-100">
+                  <span className="h-2 w-2 rounded-full bg-cyan-400 shadow-[0_0_12px_#22d3ee]" />
+                  {guestLabel
+                    ? `${useLocalFallback ? "Saved on this device" : "Securely synced"}`
+                    : isAuthReady ? "Workspace ready" : "Preparing workspace…"}
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard label="Total tasks" value={tasks.length} accent="text-white" />
-            <StatCard label="Completed" value={tasks.filter((task) => task.status === "done").length} accent="text-cyan-300" />
-            <StatCard label="In progress" value={tasks.filter((task) => task.status === "in_progress").length} accent="text-amber-300" />
-            <StatCard label="Overdue" value={tasks.filter(isOverdue).length} accent="text-rose-300" />
+          <div className="relative mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard label="Total tasks" value={tasks.length} accent="text-white" marker="bg-slate-300" />
+            <StatCard label="Completed" value={completedCount} accent="text-cyan-300" marker="bg-cyan-300" />
+            <StatCard label="In progress" value={tasks.filter((task) => task.status === "in_progress").length} accent="text-amber-300" marker="bg-amber-300" />
+            <StatCard label="Overdue" value={tasks.filter(isOverdue).length} accent="text-rose-300" marker="bg-rose-300" />
           </div>
         </section>
 
-        <section aria-label="Board controls" className="mb-6 flex flex-col gap-3 rounded-3xl border border-slate-800 bg-slate-900/70 p-4 sm:flex-row">
+        <section aria-label="Board controls" className="control-bar mb-6 flex flex-col gap-3 rounded-3xl p-3 sm:flex-row">
           <label className="relative flex-1">
             <span className="sr-only">Search tasks</span>
             <input
@@ -478,11 +495,14 @@ function App() {
   );
 }
 
-function StatCard({ label, value, accent }: { label: string; value: number; accent: string }) {
+function StatCard({ label, value, accent, marker }: { label: string; value: number; accent: string; marker: string }) {
   return (
-    <div className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5 shadow-lg shadow-slate-950/10">
-      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">{label}</p>
-      <p className={`mt-3 text-3xl font-semibold ${accent}`}>{value}</p>
+    <div className="stat-card group rounded-[1.4rem] p-4">
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{label}</p>
+        <span className={`h-2 w-2 rounded-full ${marker} opacity-70 transition group-hover:opacity-100`} />
+      </div>
+      <p className={`mt-2 text-3xl font-semibold tracking-tight ${accent}`}>{value}</p>
     </div>
   );
 }
