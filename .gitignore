@@ -16,6 +16,8 @@ dist-ssr
 !.env.example
 test-results
 playwright-report
+output
+site-build.tar.gz
 
 # Editor directories and files
 .vscode/*
