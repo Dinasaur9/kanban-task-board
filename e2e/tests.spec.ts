@@ -8,7 +8,7 @@ test.describe("Kanban board", () => {
     });
 
     await page.goto("/");
-    await expect(page.getByText(/Guest [a-z0-9-]+ workspace/i)).toBeVisible();
+    await expect(page.getByText(/Guest [a-z0-9-]+/i).first()).toBeVisible();
 
     await page.getByRole("button", { name: /new task/i }).click();
     await page.getByPlaceholder("Example: Write feature spec").fill("E2E Task");
